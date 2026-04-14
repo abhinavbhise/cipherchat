@@ -1,4 +1,4 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
     <title>CipherChat 🌐🔐</title>
@@ -9,7 +9,7 @@
 <div class="chat-container">
     <div class="chat-box" id="chat"></div>
 
-    <input id="msg" placeholder="Type message..." />
+    <input id="msg" placeholder="Type message..." onkeypress="handleKey(event)" />
     <button onclick="sendMsg()">Send</button>
 </div>
 
@@ -17,19 +17,39 @@
 
 <script>
 let socket = io();
+
+// Ask username
 let username = prompt("Enter your username");
 
+// Join event
 socket.emit('join', {username: username});
 
+// ✅ FIXED: use emit instead of send
 function sendMsg() {
-    let msg = document.getElementById("msg").value;
-    socket.send({msg: msg});
-    document.getElementById("msg").value = "";
+    let msgInput = document.getElementById("msg");
+    let msg = msgInput.value.trim();
+
+    if (msg !== "") {
+        socket.emit('message', {msg: msg});
+        msgInput.value = "";
+    }
 }
 
+// Enter key support (extra polish 😏)
+function handleKey(event) {
+    if (event.key === "Enter") {
+        sendMsg();
+    }
+}
+
+// Receive messages
 socket.on('message', function(data) {
     let chat = document.getElementById("chat");
-    chat.innerHTML += "<div>" + data + "</div>";
+
+    let messageDiv = document.createElement("div");
+    messageDiv.textContent = data;
+
+    chat.appendChild(messageDiv);
     chat.scrollTop = chat.scrollHeight;
 });
 </script>
