@@ -3,8 +3,7 @@ from flask_socketio import SocketIO, send
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-if __name__ == "__main__":
-    socketio.run(app)
+socketio = SocketIO(app, async_mode='threading')
 
 users = {}
 
@@ -23,7 +22,6 @@ def handle_message(data):
     msg = data['msg']
     username = users.get(request.sid, "Unknown")
 
-    # Private message
     if msg.startswith("@"):
         try:
             target, message = msg.split(" ", 1)
