@@ -1,1 +1,1 @@
-web: gunicorn -k threading app:app
+web: gunicorn -k gthread app:app
