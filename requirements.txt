@@ -1,3 +1,5 @@
-Flask
-Flask-SocketIO
+Flask==2.2.5
+Flask-SocketIO==5.3.6
+python-socketio==5.8.0
+python-engineio==4.4.1
 gunicorn
