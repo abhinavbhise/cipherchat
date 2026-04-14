@@ -13,7 +13,8 @@
     <button onclick="sendMsg()">Send</button>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+<!-- ✅ CORRECT Socket.IO version -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
 <script>
 let socket = io();
@@ -22,20 +23,20 @@ let socket = io();
 let username = prompt("Enter your username");
 
 // Join event
-socket.emit('join', {username: username});
+socket.emit('join', { username: username });
 
-// ✅ FIXED: use emit instead of send
+// Send message
 function sendMsg() {
-    let msgInput = document.getElementById("msg");
-    let msg = msgInput.value.trim();
+    let input = document.getElementById("msg");
+    let msg = input.value.trim();
 
     if (msg !== "") {
-        socket.emit('message', {msg: msg});
-        msgInput.value = "";
+        socket.emit('message', { msg: msg });
+        input.value = "";
     }
 }
 
-// Enter key support (extra polish 😏)
+// Enter key support
 function handleKey(event) {
     if (event.key === "Enter") {
         sendMsg();
@@ -46,11 +47,20 @@ function handleKey(event) {
 socket.on('message', function(data) {
     let chat = document.getElementById("chat");
 
-    let messageDiv = document.createElement("div");
-    messageDiv.textContent = data;
+    let div = document.createElement("div");
+    div.textContent = data;
 
-    chat.appendChild(messageDiv);
+    chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
+});
+
+// Debug connection (VERY IMPORTANT)
+socket.on('connect', () => {
+    console.log("Connected to server ✅");
+});
+
+socket.on('disconnect', () => {
+    console.log("Disconnected ❌");
 });
 </script>
 
