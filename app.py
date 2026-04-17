@@ -1,60 +1,120 @@
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO
+import random
+import string
+import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
+app.config['SECRET_KEY'] = 'cse_project_secret_key'
 
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Setup SocketIO with gevent for production stability
+socketio = SocketIO(app, async_mode='gevent', cors_allowed_origins="*")
 
-users = {}
+# Dictionaries to store active users and their encryption keys
+active_users = {}
+encryption_keys = {}
+
+def xor_cipher(text, key):
+    """
+    Symmetric encryption using XOR bitwise operation.
+    It loops over the text and applies the key repeatedly.
+    """
+    result = ""
+    for i in range(len(text)):
+        # Use modulo to loop the key if the text is longer than the key
+        key_char = key[i % len(key)]
+        # XOR the ASCII values and convert back to a character
+        result += chr(ord(text[i]) ^ ord(key_char))
+    return result
 
 @app.route('/')
-def index():
+def home():
     return render_template('index.html')
 
-@socketio.on('connect')
-def handle_connect():
-    print("Client connected:", request.sid)
-
-@socketio.on('join')
+@socketio.on('join_chat')
 def handle_join(data):
     username = data['username']
-    users[request.sid] = username
+    active_users[request.sid] = username
+    
+    # Generate a random 8-character key for this specific user
+    characters = string.ascii_letters + string.digits
+    user_key = ""
+    for _ in range(8):
+        user_key += random.choice(characters)
+        
+    encryption_keys[username] = user_key
+    
+    # Send the private key ONLY to the user who just joined
+    socketio.emit('server_message', 
+                  {'type': 'system', 'content': f"Welcome {username}. Your assigned XOR key is: {user_key}"}, 
+                  room=request.sid)
+    
+    # Broadcast to everyone else that a user joined
+    socketio.emit('server_message', 
+                  {'type': 'system', 'content': f"{username} has joined the encrypted chat."}, 
+                  include_self=False)
 
-    socketio.emit('message', f"{username} joined the chat!")
-
-@socketio.on('message')
+@socketio.on('send_message')
 def handle_message(data):
-    print("Received:", data)
-
-    msg = data.get('msg')
-    username = users.get(request.sid, "Unknown")
-
-    if not msg:
+    message_text = data.get('message')
+    sender = active_users.get(request.sid, "Unknown User")
+    
+    if not message_text:
         return
 
-    if msg.startswith("@"):
+    # Check if the user is trying to send a private message
+    if message_text.startswith("@"):
         try:
-            target, message = msg.split(" ", 1)
-            target = target[1:]
+            # Split the string into the target username and the actual message
+            split_data = message_text[1:].split(" ", 1)
+            target_user = split_data[0]
+            actual_message = split_data[1]
+            
+            # Find the session ID of the target user
+            target_sid = None
+            for sid, name in active_users.items():
+                if name == target_user:
+                    target_sid = sid
+                    break
+            
+            if target_sid:
+                target_key = encryption_keys.get(target_user)
+                encrypted_text = xor_cipher(actual_message, target_key)
+                
+                # Send to target
+                socketio.emit('server_message', 
+                              {'type': 'chat', 'sender': f"(Private from {sender})", 'content': encrypted_text}, 
+                              room=target_sid)
+                
+                # Show confirmation to the sender (unencrypted so they can read what they sent)
+                socketio.emit('server_message', 
+                              {'type': 'chat', 'sender': f"(Private to {target_user})", 'content': actual_message, 'is_raw': True}, 
+                              room=request.sid)
+                return
+        except IndexError:
+            pass # Failsafe if the user types "@name" but forgets to type a message
 
-            for sid, user in users.items():
-                if user == target:
-                    socketio.emit('message', f"(Private) {username}: {message}", to=sid)
-                    return
-        except:
-            pass
-
-    socketio.emit('message', f"{username}: {msg}")
+    # If it's a normal broadcast message
+    sender_key = encryption_keys.get(sender, "default")
+    encrypted_text = xor_cipher(message_text, sender_key)
+    
+    socketio.emit('server_message', {'type': 'chat', 'sender': sender, 'content': encrypted_text})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    username = users.get(request.sid, "User")
-
-    if request.sid in users:
-        del users[request.sid]
-
-    socketio.emit('message', f"{username} left the chat")
+    username = active_users.get(request.sid)
+    if username:
+        del active_users[request.sid]
+        socketio.emit('server_message', {'type': 'system', 'content': f"{username} disconnected."})
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000)
+    # Render and Railway pass the port dynamically via environment variables
+    # If it's running locally, it defaults to 5000
+    port = int(os.environ.get("PORT", 5000))
+    
+    print("\n" + "="*50)
+    print(f"🚀 SYSTEM ONLINE: CipherChat Server is running!")
+    print(f"🌐 Access the application at: http://127.0.0.1:{port}")
+    print("="*50 + "\n")
+    
+    socketio.run(app, host='0.0.0.0', port=port)
