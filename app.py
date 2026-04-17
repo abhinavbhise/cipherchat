@@ -8,7 +8,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'cse_project_secret_key'
 
 # Setup SocketIO with gevent for production stability
-socketio = SocketIO(app, async_mode='gevent', cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60)
 
 # Dictionaries to store active users and their encryption keys
 active_users = {}
