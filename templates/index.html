@@ -1,68 +1,114 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>CipherChat 🌐🔐</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherChat</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon2.png">
 </head>
 <body>
 
-<div class="chat-container">
-    <div class="chat-box" id="chat"></div>
+    <div class="chat-wrapper">
+        <div class="sidebar">
+            <h2>CipherChat</h2>
+            <div class="info-box">
+                <p><strong>Your Identity:</strong> <span id="display-name">Not Set</span></p>
+                <p><strong>Your Key:</strong> <span id="display-key" class="highlight">Waiting...</span></p>
+            </div>
+            <div class="instructions">
+                <p>Type <strong>@username message</strong> to send a private encrypted message.</p>
+            </div>
+        </div>
 
-    <input id="msg" placeholder="Type message..." onkeypress="handleKey(event)" />
-    <button onclick="sendMsg()">Send</button>
-</div>
+        <div class="main-chat">
+            <div class="chat-header">Global Encrypted Channel</div>
+            <div class="message-area" id="message-container">
+                </div>
+            <div class="input-area">
+                <input type="text" id="user-input" placeholder="Type your message here..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
 
-<!-- ✅ CORRECT Socket.IO version -->
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let myEncryptionKey = "";
+        
+        // Prompt for username on load
+        let currentUsername = prompt("Welcome to CipherChat. Enter your username:");
+        if (!currentUsername) currentUsername = "Guest" + Math.floor(Math.random() * 1000);
+        
+        document.getElementById("display-name").innerText = currentUsername;
+        socket.emit('join_chat', { username: currentUsername });
 
-<script>
-let socket = io();
+        // Decryption function mirroring the Python logic
+        function xorDecrypt(text, key) {
+            if (!key) return text;
+            let result = "";
+            for (let i = 0; i < text.length; i++) {
+                result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+            }
+            return result;
+        }
 
-// Ask username
-let username = prompt("Enter your username");
+        function sendMessage() {
+            let inputField = document.getElementById("user-input");
+            let messageText = inputField.value.trim();
+            
+            if (messageText !== "") {
+                socket.emit('send_message', { message: messageText });
+                inputField.value = ""; // Clear the input box
+            }
+        }
 
-// Join event
-socket.emit('join', { username: username });
+        function handleKeyPress(event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        }
 
-// Send message
-function sendMsg() {
-    let input = document.getElementById("msg");
-    let msg = input.value.trim();
+        // Listen for incoming messages from the server
+        socket.on('server_message', function(data) {
+            const container = document.getElementById("message-container");
+            const newDiv = document.createElement("div");
 
-    if (msg !== "") {
-        socket.emit('message', { msg: msg });
-        input.value = "";
-    }
-}
+            if (data.type === 'system') {
+                newDiv.className = "system-message";
+                newDiv.innerText = data.content;
+                
+                // Extract the key if the server assigns one
+                if (data.content.includes("XOR key is:")) {
+                    let parts = data.content.split("key is: ");
+                    myEncryptionKey = parts[1];
+                    document.getElementById("display-key").innerText = myEncryptionKey;
+                }
+            } else {
+                // Determine if the message is from me or someone else
+                if (data.sender === currentUsername || data.sender.includes("(Private to")) {
+                    newDiv.className = "message bubble-mine";
+                } else {
+                    newDiv.className = "message bubble-other";
+                }
 
-// Enter key support
-function handleKey(event) {
-    if (event.key === "Enter") {
-        sendMsg();
-    }
-}
+                // If the message is marked 'is_raw', skip decryption (used for self-viewing private messages)
+                let finalContent = data.is_raw ? data.content : xorDecrypt(data.content, myEncryptionKey);
+                
+                // Extract a snippet of the raw cipher to prove encryption is happening
+                let cipherProof = data.content.substring(0, 15) + "...";
 
-// Receive messages
-socket.on('message', function(data) {
-    let chat = document.getElementById("chat");
+                newDiv.innerHTML = `
+                    <div class="sender-name">${data.sender}</div>
+                    <div class="message-text">${finalContent}</div>
+                    <div class="cipher-proof">Ciphertext: ${cipherProof}</div>
+                `;
+            }
 
-    let div = document.createElement("div");
-    div.textContent = data;
-
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-});
-
-// Debug connection (VERY IMPORTANT)
-socket.on('connect', () => {
-    console.log("Connected to server ✅");
-});
-
-socket.on('disconnect', () => {
-    console.log("Disconnected ❌");
-});
-</script>
-
+            container.appendChild(newDiv);
+            container.scrollTop = container.scrollHeight; // Keep chat scrolled to bottom
+        });
+    </script>
 </body>
 </html>
